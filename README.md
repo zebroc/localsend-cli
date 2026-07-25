@@ -16,8 +16,12 @@ One binary does both jobs:
 
 ```sh
 brew tap zebroc/tap
+brew trust zebroc/tap        # Homebrew 6 requires third-party taps to be trusted
 brew install localsend-cli
 ```
+
+The formula is `localsend-cli`; the cask `localsend` is the official GUI app, so the two
+can coexist — though not on the same port, see the limitation below.
 
 ### From source
 
