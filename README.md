@@ -246,3 +246,8 @@ Implemented from the [protocol specification](https://github.com/localsend/proto
   409; nothing here needs to ask a user, so that limit would serve no purpose.
 * Not implemented: the reverse "download API" (section 5 of the spec, browser downloads
   from the sender) and WebRTC signalling for transfers over the internet.
+
+## License
+
+[MIT](LICENSE). This is an independent implementation written from the published
+protocol specification; it contains no code from the LocalSend project.
