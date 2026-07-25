@@ -95,6 +95,89 @@ func TestSendTwiceKeepsBothCopies(t *testing.T) {
 	assertFile(t, filepath.Join(dst, "report (1).pdf"), []byte("second"))
 }
 
+// With --parallel the uploads run through a worker pool instead of one after
+// another; every file must still arrive intact.
+func TestSendInParallel(t *testing.T) {
+	receiverID := loadIdentity(t, "Receiver")
+	senderID := loadIdentity(t, "Sender")
+
+	dst := t.TempDir()
+	src := t.TempDir()
+	contents := map[string][]byte{
+		"a.txt": bytes.Repeat([]byte("a"), 1024),
+		"b.txt": bytes.Repeat([]byte("b"), 200_000),
+		"c.txt": bytes.Repeat([]byte("c"), 3),
+		"d.bin": bytes.Repeat([]byte{0x00, 0xff}, 50_000),
+		"e.txt": []byte("last"),
+	}
+	paths := make([]string, 0, len(contents))
+	for name, content := range contents {
+		writeFile(t, filepath.Join(src, name), content)
+		paths = append(paths, filepath.Join(src, name))
+	}
+
+	device := startReceiver(t, receiverID, dst, "")
+	entries, err := send.Collect(paths)
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if err := send.Send(context.Background(), send.Options{
+		Identity: senderID, Target: device, Entries: entries, Parallel: 4,
+	}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	for name, content := range contents {
+		assertFile(t, filepath.Join(dst, name), content)
+	}
+}
+
+// When one file cannot be read the transfer must fail loudly and tell the
+// receiver to drop the session, rather than leaving it half-finished.
+func TestFailedUploadIsReported(t *testing.T) {
+	receiverID := loadIdentity(t, "Receiver")
+	senderID := loadIdentity(t, "Sender")
+
+	dst := t.TempDir()
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "present.txt"), []byte("here"))
+	writeFile(t, filepath.Join(src, "vanishing.txt"), []byte("gone before the upload"))
+
+	device := startReceiver(t, receiverID, dst, "")
+	entries, err := send.Collect([]string{
+		filepath.Join(src, "present.txt"),
+		filepath.Join(src, "vanishing.txt"),
+	})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	// The metadata is already collected; removing the file now makes the upload
+	// itself fail, which is what happens when a file disappears mid-transfer.
+	if err := os.Remove(filepath.Join(src, "vanishing.txt")); err != nil {
+		t.Fatal(err)
+	}
+
+	err = send.Send(context.Background(), send.Options{
+		Identity: senderID, Target: device, Entries: entries,
+	})
+	if err == nil {
+		t.Fatal("Send should fail when a file cannot be read")
+	}
+	if !strings.Contains(err.Error(), "vanishing.txt") {
+		t.Errorf("error %q should name the file that failed", err)
+	}
+
+	// The file that made it through is kept; the failed one leaves nothing
+	// behind, not even a .part file.
+	assertFile(t, filepath.Join(dst, "present.txt"), []byte("here"))
+	for _, name := range []string{"vanishing.txt", "vanishing.txt.part"} {
+		if _, err := os.Stat(filepath.Join(dst, name)); err == nil {
+			t.Errorf("%s should not exist", name)
+		}
+	}
+}
+
 func TestPinIsEnforced(t *testing.T) {
 	receiverID := loadIdentity(t, "Receiver")
 	senderID := loadIdentity(t, "Sender")

@@ -238,20 +238,26 @@ func (l *Listener) Close() error { return l.conn.Close() }
 // answer replies to an announcement, preferring TCP as the protocol suggests
 // and falling back to a multicast response.
 func (l *Listener) answer(ctx context.Context, device proto.Device) {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-
-	client := httpx.New(httpx.Options{Identity: l.cfg.Identity, Timeout: 3 * time.Second})
-	err := httpx.PostJSON(ctx, client, device.BaseURL()+"/register", l.cfg.Register(), nil)
+	err := l.cfg.answerPeer(ctx, device)
 	if err == nil {
 		ui.Debugf("answered %s via TCP", device)
 		return
 	}
-
 	ui.Debugf("answering %s via TCP failed (%v), falling back to multicast", device, err)
+
 	if err := l.sendMessage(l.cfg.message(false)); err != nil {
 		ui.Debugf("multicast answer failed: %v", err)
 	}
+}
+
+// answerPeer tells a peer about us by calling its register route, which is how
+// the protocol wants announcements answered.
+func (c Config) answerPeer(ctx context.Context, device proto.Device) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	client := httpx.New(httpx.Options{Identity: c.Identity, Timeout: 3 * time.Second})
+	return httpx.PostJSON(ctx, client, device.BaseURL()+"/register", c.Register(), nil)
 }
 
 // sendMessage writes one datagram to the group on every usable interface.

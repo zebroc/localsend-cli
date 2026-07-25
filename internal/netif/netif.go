@@ -28,29 +28,6 @@ func Multicast() ([]net.Interface, error) {
 	return usable, nil
 }
 
-// LocalIPv4 returns the IPv4 addresses assigned to this host, loopback included.
-func LocalIPv4() map[string]bool {
-	out := map[string]bool{}
-	all, err := net.Interfaces()
-	if err != nil {
-		return out
-	}
-	for _, ifi := range all {
-		addrs, err := ifi.Addrs()
-		if err != nil {
-			continue
-		}
-		for _, addr := range addrs {
-			if ipnet, ok := addr.(*net.IPNet); ok {
-				if ip4 := ipnet.IP.To4(); ip4 != nil {
-					out[ip4.String()] = true
-				}
-			}
-		}
-	}
-	return out
-}
-
 func hasIPv4(ifi net.Interface) bool {
 	addrs, err := ifi.Addrs()
 	if err != nil {

@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS and Linux differ in socket behaviour (SO_REUSEPORT, multicast
+        # flags on loopback), which is exactly what this project relies on.
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt would change these files:"
+            echo "$unformatted"
+            gofmt -d .
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+      # -race catches data races in the server's session handling and in the
+      # concurrent uploads; -count=1 disables the test cache.
+      - name: go test
+        run: go test -race -count=1 ./...
+
+      # The multicast round-trip needs datagrams to loop back on this host,
+      # which not every runner network allows. It must not fail the build, but
+      # its result is worth seeing.
+      - name: go test (multicast, informational)
+        continue-on-error: true
+        env:
+          LOCALSEND_CLI_MULTICAST_TESTS: "1"
+        run: go test -count=1 -run TestMulticastRoundTrip -v ./internal/discovery/
+
+  cross-build:
+    name: cross-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      # Guards the build tags in internal/netif, where Windows takes a
+      # different path than unix.
+      - name: build for every target
+        run: |
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            echo "==> $target"
+            GOOS="${target%/*}" GOARCH="${target#*/}" go build -o "/tmp/localsend-cli-${GOOS}-${GOARCH}" .
+          done

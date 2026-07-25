@@ -1,5 +1,7 @@
 # localsend-cli
 
+[![CI](https://github.com/zebroc/localsend-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/zebroc/localsend-cli/actions/workflows/ci.yml)
+
 A headless [LocalSend](https://localsend.org/) client in a single Go binary. It speaks
 LocalSend protocol v2.1 and interoperates with the official apps on phones and desktops.
 
@@ -246,6 +248,40 @@ Implemented from the [protocol specification](https://github.com/localsend/proto
   409; nothing here needs to ask a user, so that limit would serve no purpose.
 * Not implemented: the reverse "download API" (section 5 of the spec, browser downloads
   from the sender) and WebRTC signalling for transfers over the internet.
+
+## Tests
+
+```sh
+go test ./...              # everything
+go test -race ./...        # what CI runs
+```
+
+The suite runs offline and needs no LocalSend instance: it binds ephemeral ports on the
+loopback interface and creates its own throwaway identities in temporary directories
+(`LOCALSEND_CLI_CONFIG_DIR`), so it never touches your certificate or peer cache.
+
+What it covers beyond the obvious:
+
+* The fingerprint format is pinned against the reference implementation's own test vector,
+  so a change here cannot silently make us unrecognisable to real peers.
+* The spec's example JSON payloads are parsed as-is, including the v1 `announcement` key
+  and the legacy `fileType` enum.
+* Received file names are attacked with `..`, absolute paths, drive letters and control
+  characters; nothing may end up outside the destination directory.
+* Full transfers over TLS: directory trees, non-ASCII names, collisions, wrong PINs,
+  parallel uploads, a file that disappears mid-transfer, and plain HTTP.
+* Answering an announcement really registers with the peer over mTLS, with the fingerprint
+  taken from the client certificate.
+
+One test needs real multicast delivery and is therefore opt-in, because container and CI
+networks often drop it:
+
+```sh
+LOCALSEND_CLI_MULTICAST_TESTS=1 go test -run TestMulticastRoundTrip ./internal/discovery/
+```
+
+It runs the whole discovery loop: announce, a listening daemon answers by calling our
+register route, the scan returns it.
 
 ## License
 
