@@ -39,7 +39,10 @@ func (r *Receiver) Save(f proto.File, body io.Reader) (string, error) {
 	if !withinDir(r.Dir, full) {
 		return "", fmt.Errorf("refusing path outside of destination: %q", f.FileName)
 	}
-	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+	// 0o777/0o666 are the conventional Unix requests for a new directory and
+	// file respectively; the umask the daemon runs under (e.g. via systemd's
+	// UMask=) does the actual restricting, same as any other Unix program.
+	if err := os.MkdirAll(filepath.Dir(full), 0o777); err != nil {
 		return "", err
 	}
 
@@ -90,7 +93,7 @@ func createTarget(full string) (*os.File, string, error) {
 		if i > 0 {
 			candidate = withCount(full, i)
 		}
-		file, err := os.OpenFile(candidate+".part", os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		file, err := os.OpenFile(candidate+".part", os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o666)
 		if err != nil {
 			if os.IsExist(err) {
 				continue

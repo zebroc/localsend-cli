@@ -134,7 +134,9 @@ func runDaemon(opts options) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+	// See internal/server/receive.go for why 0o777 rather than 0o755: the
+	// process umask is what actually restricts this.
+	if err := os.MkdirAll(dstDir, 0o777); err != nil {
 		return fmt.Errorf("destination directory: %w", err)
 	}
 
